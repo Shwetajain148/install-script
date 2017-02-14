@@ -456,6 +456,8 @@ modifyMaxMessageSize()
 	logMsgToConfigSysLog "INFO" "INFO: Modified \$MaxMessageSize to 64k in rsyslog.conf"
 }
 
+
+
 #check if authentication token is valid and then write contents to 22-loggly.conf file to /etc/rsyslog.d directory
 checkAuthTokenAndWriteContents()
 {
@@ -468,11 +470,30 @@ checkAuthTokenAndWriteContents()
 	fi
 }
 
-
 #write the contents to 22-loggly.conf file
 writeContents()
 {
+		
+inputStr2='
+# Setup disk assisted queues
+$WorkDirectory /var/spool/rsyslog # where to place spool files
+$ActionQueueFileName fwdRule1     # unique name prefix for spool files
+$ActionQueueMaxDiskSpace 1g       # 1gb space limit (use as much as possible)
+$ActionQueueSaveOnShutdown on     # save messages to disk on shutdown
+$ActionQueueType LinkedList       # run asynchronously
+$ActionResumeRetryCount -1        # infinite retries if host is down
 
+#RsyslogGnuTLS
+$DefaultNetstreamDriverCAFile /etc/rsyslog.d/keys/ca.d/logs-01.loggly.com_sha12.crt
+
+template(name="LogglyFormat" type="string"
+string="<%pri%>%protocol-version% %timestamp:::date-rfc3339% %HOSTNAME% %app-name% %procid% %msgid% [$2@$3] %msg%\n"
+)
+
+# Send messages to Loggly over TCP using the template.
+action(type="omfwd" protocol="tcp" target="logs-01.loggly.com" port="6514" template="LogglyFormat" StreamDriver="gtls" StreamDriverMode="1" StreamDriverAuthMode="x509/name" StreamDriverPermittedPeers="*.loggly.com")
+
+'			
 WRITE_SCRIPT_CONTENTS="false"
 inputStr="
 #          -------------------------------------------------------
@@ -494,6 +515,10 @@ inputStr="
 
 #     -------------------------------------------------------
 "
+read -p "Do you wish to send the logs over TLS? (yes/no)" yn
+if [ "$yn" == "y" ]; then
+  inputStr=$inputStr2
+fi
 	if [ -f "$LOGGLY_RSYSLOG_CONFFILE" ]; then
 		logMsgToConfigSysLog "INFO" "INFO: Loggly rsyslog file $LOGGLY_RSYSLOG_CONFFILE already exist."
 
